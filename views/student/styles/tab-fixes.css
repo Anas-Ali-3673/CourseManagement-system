@@ -1,0 +1,11 @@
+/* Tab Pane Fixes */
+.tab-pane {
+  display: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.tab-pane.active {
+  display: block;
+  opacity: 1;
+}

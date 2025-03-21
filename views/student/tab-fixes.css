@@ -1,0 +1,64 @@
+/* Tab Pane Fixes */
+.tab-pane {
+  display: none;
+  width: 100%;
+  padding: 20px 0;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+/* Fix modal overlapping */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1050;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  overflow: auto;
+}
+
+.modal.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background-color: #fff;
+  margin: 0 auto;
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 600px;
+  position: relative;
+}
+
+/* Main Content Fix */
+.main-content {
+  margin-left: 250px;
+  padding: 30px;
+  width: calc(100% - 250px);
+  box-sizing: border-box;
+}
+
+/* Responsive fixes */
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 200px;
+    width: calc(100% - 200px);
+  }
+}
+
+@media (max-width: 576px) {
+  .main-content {
+    margin-left: 60px;
+    width: calc(100% - 60px);
+    padding: 15px;
+  }
+}

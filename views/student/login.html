@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Student Login</title>
+    <link rel="stylesheet" href="styles/main.css" />
+    <link rel="stylesheet" href="styles/login.css" />
+  </head>
+  <body>
+    <div class="login-container">
+      <div class="login-card">
+        <div class="login-header">
+          <h1>Student Portal</h1>
+          <p>Please enter your roll number to continue</p>
+        </div>
+        <form class="login-form" id="loginForm">
+          <div class="form-group">
+            <label for="rollNumber">Roll Number</label>
+            <input
+              type="text"
+              id="rollNumber"
+              name="rollNumber"
+              required
+              placeholder="Enter your roll number"
+            />
+            <div class="error-message" id="errorMessage"></div>
+          </div>
+          <button type="submit" class="login-button" id="loginButton">
+            Login
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE_URL = 'http://localhost:5000';
+    </script>
+    <script src="login.js"></script>
+  </body>
+</html>

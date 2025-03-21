@@ -1,0 +1,77 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #e0e5ec;
+}
+
+.neumorphic {
+  background: #e0e5ec;
+  border-radius: 20px;
+  box-shadow: 10px 10px 20px #a3b1c6, -10px -10px 20px #ffffff;
+}
+
+.neumorphic-inset {
+  background: #e0e5ec;
+  border-radius: 20px;
+  box-shadow: inset 10px 10px 20px #a3b1c6, inset -10px -10px 20px #ffffff;
+}
+
+.neumorphic-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 30px;
+  width: 300px;
+  text-align: center;
+}
+
+.neumorphic-card h1 {
+  color: #2d3436;
+  margin-bottom: 30px;
+  font-size: 24px;
+}
+
+.neumorphic-input {
+  width: 100%;
+  padding: 12px 20px;
+  margin: 8px 0;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  color: #2d3436;
+  transition: all 0.3s ease;
+}
+
+.neumorphic-input:focus {
+  box-shadow: inset 10px 10px 20px #a3b1c6, inset -10px -10px 20px #ffffff;
+}
+
+.neumorphic-button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 20px;
+  border: none;
+  color: #2d3436;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.neumorphic-button:hover {
+  box-shadow: 5px 5px 10px #a3b1c6, -5px -5px 10px #ffffff;
+}
+
+.neumorphic-button:active {
+  box-shadow: inset 5px 5px 10px #a3b1c6, inset -5px -5px 10px #ffffff;
+}

@@ -1,0 +1,63 @@
+/* Table Container */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Data Table */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  font-size: 14px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.data-table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.data-table tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+.data-table td:last-child {
+  white-space: nowrap;
+}
+
+/* Table Actions */
+.data-table .btn {
+  padding: 4px 8px;
+  margin: 0 2px;
+  font-size: 12px;
+}
+
+/* Loading State */
+.data-table .loading {
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Empty State */
+.data-table .empty-state {
+  text-align: center;
+  padding: 2rem;
+  color: #6c757d;
+}
+
+/* Responsive Table */
+@media (max-width: 768px) {
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
