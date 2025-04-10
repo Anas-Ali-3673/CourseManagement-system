@@ -62,8 +62,20 @@ async function loadEnrollments() {
       throw new Error(`Failed to load enrollments: ${response.status}`);
     }
 
-    const result = await response.json();
-    console.log('Raw enrollment data:', result);
+    // Try to get response as text first to debug any parsing issues
+    const responseText = await response.text();
+    console.log('Raw enrollment response:', responseText);
+
+    // Parse the response text
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse JSON response:', e);
+      throw new Error('Invalid JSON response from server');
+    }
+
+    console.log('Parsed enrollment data:', result);
 
     // Handle different response formats (array vs object with data property)
     let enrollmentData;
@@ -71,29 +83,47 @@ async function loadEnrollments() {
       enrollmentData = result;
     } else if (result.data && Array.isArray(result.data)) {
       enrollmentData = result.data;
+    } else if (result.enrollments && Array.isArray(result.enrollments)) {
+      // Added this check for the 'enrollments' property
+      enrollmentData = result.enrollments;
+      console.log('Found enrollments array in response:', enrollmentData);
+    } else if (result.status === 'success' && result.data) {
+      enrollmentData = Array.isArray(result.data) ? result.data : [result.data];
     } else {
+      console.warn('Unexpected enrollment data structure:', result);
       enrollmentData = [];
     }
 
     // Map the enrollment data to match the expected structure
     enrollments = enrollmentData.map((enrollment) => {
+      // Extract student and course IDs safely
+      const studentId =
+        enrollment.student?._id || enrollment.student || enrollment.studentId;
+      const courseId =
+        enrollment.course?._id || enrollment.course || enrollment.courseId;
+
+      // Handle both timestamp and enrolledDate fields
+      const enrollDate =
+        enrollment.enrolledDate ||
+        enrollment.timestamp ||
+        new Date().toISOString();
+
       return {
         _id: enrollment._id,
-        student: enrollment.student?._id || enrollment.student,
-        course: enrollment.course?._id || enrollment.course,
-        studentId: enrollment.student?._id || enrollment.student,
-        courseId: enrollment.course?._id || enrollment.course,
+        student: enrollment.student,
+        course: enrollment.course,
+        studentId: studentId,
+        courseId: courseId,
         status: enrollment.status || 'pending',
-        enrolledDate:
-          enrollment.timestamp ||
-          enrollment.enrolledDate ||
-          new Date().toISOString(),
+        enrolledDate: enrollDate,
         grade: enrollment.grade || null,
         notes: enrollment.notes || null,
       };
     });
 
     console.log('Processed enrollments:', enrollments);
+    console.log('Available students:', students);
+    console.log('Available courses:', window.courses);
 
     // Update UI
     updateEnrollmentsTable();
@@ -116,9 +146,41 @@ async function loadEnrollments() {
 
 function updateEnrollmentsTable() {
   const tableBody = document.getElementById('enrollments-table-body');
+
+  // Add debugging for the table body element
+  console.log('Enrollment table body element:', tableBody);
+  console.log('All table bodies on page:', document.querySelectorAll('tbody'));
+
   if (!tableBody) {
-    console.warn('Enrollments table body not found in the DOM');
-    return;
+    console.warn(
+      'Enrollments table body not found in the DOM. Looking for element with ID "enrollments-table-body"'
+    );
+
+    // Try to find the enrollments table and create tbody if missing
+    const enrollmentsTable = document.querySelector('table.data-table');
+    if (enrollmentsTable) {
+      console.log('Found data table, checking if it has a tbody');
+      let tbody = enrollmentsTable.querySelector('tbody');
+
+      if (!tbody) {
+        console.log(
+          'No tbody found, creating one with id "enrollments-table-body"'
+        );
+        tbody = document.createElement('tbody');
+        tbody.id = 'enrollments-table-body';
+        enrollmentsTable.appendChild(tbody);
+        tableBody = tbody;
+      } else if (!tbody.id) {
+        console.log(
+          'Found tbody without ID, setting ID to "enrollments-table-body"'
+        );
+        tbody.id = 'enrollments-table-body';
+        tableBody = tbody;
+      }
+    } else {
+      console.error('No enrollment table found on the page');
+      return;
+    }
   }
 
   if (!enrollments || enrollments.length === 0) {
@@ -127,50 +189,158 @@ function updateEnrollmentsTable() {
     return;
   }
 
+  // Generate HTML with detailed debugging
+  console.log('Building HTML for ' + enrollments.length + ' enrollments');
   let html = '';
-  enrollments.forEach((enrollment) => {
-    // Find associated student
-    const student = students.find((s) => s._id === enrollment.studentId);
+  let skippedEnrollments = 0;
+  let successfulRows = 0;
 
-    // Find associated course
-    const course = window.courses?.find((c) => c._id === enrollment.courseId);
+  for (let i = 0; i < enrollments.length; i++) {
+    const enrollment = enrollments[i];
+    console.log(`Processing enrollment ${i + 1}:`, enrollment);
 
-    if (!student || !course) {
-      console.warn('Missing student or course for enrollment:', enrollment);
-      console.log('Student found:', student);
-      console.log('Course found:', course);
-      return;
+    try {
+      // Find associated student
+      const student = students.find((s) => s._id === enrollment.studentId);
+      console.log(`For enrollment ${i + 1} - Student found:`, student);
+
+      // Find associated course
+      const course = window.courses?.find((c) => c._id === enrollment.courseId);
+      console.log(`For enrollment ${i + 1} - Course found:`, course);
+
+      if (!student || !course) {
+        console.warn(
+          `Enrollment ${i + 1}: Missing student or course for enrollment:`,
+          enrollment
+        );
+        console.log(
+          `Enrollment ${i + 1}: Student found:`,
+          student,
+          'for ID:',
+          enrollment.studentId
+        );
+        console.log(
+          `Enrollment ${i + 1}: Course found:`,
+          course,
+          'for ID:',
+          enrollment.courseId
+        );
+        skippedEnrollments++;
+
+        // Create a fallback row with available information
+        html += `
+          <tr>
+            <td>${
+              student?.name || 'Student #' + enrollment.studentId || 'Unknown'
+            }</td>
+            <td>${student?.rollNo || 'N/A'}</td>
+            <td>${
+              course?.name || 'Course #' + enrollment.courseId || 'Unknown'
+            }</td>
+            <td>${course?.courseCode || 'N/A'}</td>
+            <td>${new Date(
+              enrollment.enrolledDate || enrollment.timestamp
+            ).toLocaleDateString()}</td>
+            <td>
+              <span class="badge ${getStatusBadgeClass(enrollment.status)}">
+                ${enrollment.status || 'pending'}
+              </span>
+            </td>
+            <td>
+              <button class="btn primary small" onclick="viewEnrollmentDetails('${
+                enrollment._id
+              }')">
+                View
+              </button>
+              <button class="btn danger small" onclick="confirmCancelEnrollment('${
+                enrollment._id
+              }')">
+                Cancel
+              </button>
+            </td>
+          </tr>
+        `;
+        continue;
+      }
+
+      const row = `
+        <tr>
+          <td>${student.name || 'Unknown'}</td>
+          <td>${student.rollNo || 'N/A'}</td>
+          <td>${course.name || 'Unknown'}</td>
+          <td>${course.courseCode || 'N/A'}</td>
+          <td>${new Date(
+            enrollment.enrolledDate || enrollment.timestamp
+          ).toLocaleDateString()}</td>
+          <td>
+            <span class="badge ${getStatusBadgeClass(enrollment.status)}">
+              ${enrollment.status || 'pending'}
+            </span>
+          </td>
+          <td>
+            <button class="btn primary small" onclick="viewEnrollmentDetails('${
+              enrollment._id
+            }')">
+              View
+            </button>
+            <button class="btn danger small" onclick="confirmCancelEnrollment('${
+              enrollment._id
+            }')">
+              Cancel
+            </button>
+          </td>
+        </tr>
+      `;
+      html += row;
+      successfulRows++;
+    } catch (error) {
+      console.error(`Error processing enrollment ${i + 1}:`, error);
+      skippedEnrollments++;
     }
+  }
 
-    html += `
-      <tr>
-        <td>${student.name || 'Unknown'}</td>
-        <td>${student.rollNo || 'N/A'}</td>
-        <td>${course.name || 'Unknown'}</td>
-        <td>${course.courseCode || 'N/A'}</td>
-        <td>${new Date(enrollment.enrolledDate).toLocaleDateString()}</td>
-        <td>
-          <span class="badge ${getStatusBadgeClass(enrollment.status)}">
-            ${enrollment.status || 'pending'}
-          </span>
-        </td>
-        <td>
-          <button class="btn primary small" onclick="viewEnrollmentDetails('${
-            enrollment._id
-          }')">
-            View
-          </button>
-          <button class="btn danger small" onclick="confirmCancelEnrollment('${
-            enrollment._id
-          }')">
-            Cancel
-          </button>
-        </td>
-      </tr>
-    `;
-  });
+  console.log(
+    `Generated HTML for ${successfulRows} rows (skipped ${skippedEnrollments})`
+  );
+  console.log('HTML content length:', html.length);
+  console.log('First 200 chars of HTML:', html.substring(0, 200));
 
-  tableBody.innerHTML = html;
+  if (skippedEnrollments > 0) {
+    console.warn(
+      `Skipped ${skippedEnrollments} enrollments due to missing student or course data`
+    );
+  }
+
+  // Apply the HTML to the table body
+  try {
+    console.log('Setting innerHTML on table body');
+    tableBody.innerHTML = html;
+    console.log(
+      'Table body now contains',
+      tableBody.children.length,
+      'children'
+    );
+  } catch (error) {
+    console.error('Error setting table body innerHTML:', error);
+
+    // Fallback: try appending rows one by one
+    console.log('Trying fallback method: creating nodes and appending');
+    tableBody.innerHTML = '';
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+
+    const rows = tempDiv.querySelectorAll('tr');
+    rows.forEach((row) => {
+      tableBody.appendChild(row);
+    });
+
+    console.log(
+      'Table body now contains',
+      tableBody.children.length,
+      'children after fallback'
+    );
+  }
 }
 
 // Helper function to get badge class based on status
@@ -219,24 +389,20 @@ function updateRecentEnrollments() {
     ).toLocaleDateString();
 
     html += `
-      <div class="list-group-item list-group-item-action">
-        <div class="d-flex w-100 justify-content-between">
-          <h5 class="mb-1">${student.name}</h5>
+      <div class="list-group-item">
+        <div class="enrollment-header">
+          <h5>${student.name}</h5>
           <small>${enrollmentDate}</small>
         </div>
-        <p class="mb-1">Enrolled in ${course.name} (${course.courseCode})</p>
-        <small class="d-flex justify-content-between">
-          <span>Student ID: ${student.studentId}</span>
-          <span class="badge bg-${
-            enrollment.status === 'active'
-              ? 'success'
-              : enrollment.status === 'pending'
-              ? 'warning'
-              : 'secondary'
-          }">
+        <p class="enrollment-course">Enrolled in ${course.name} (${
+      course.courseCode
+    })</p>
+        <div class="enrollment-footer">
+          <span>Student ID: ${student.rollNo}</span>
+          <span class="badge ${getStatusBadgeClass(enrollment.status)}">
             ${enrollment.status}
           </span>
-        </small>
+        </div>
       </div>
     `;
   });
@@ -261,93 +427,120 @@ function viewEnrollmentDetails(enrollmentId) {
     return;
   }
 
-  // Set modal title
-  document.getElementById('enrollmentModalLabel').textContent =
-    'Enrollment Details';
+  const modalContent = `
+    <div class="modal" id="enrollmentModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="enrollmentModalLabel">Enrollment Details</h3>
+          <button class="close-btn" onclick="hideModal('enrollmentModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="enrollment-details">
+          <div class="card">
+            <div class="card-header primary">
+              <h4>Student Information</h4>
+            </div>
+            <div class="card-body">
+              <p><strong>Name:</strong> ${student.name}</p>
+              <p><strong>Student ID:</strong> ${student.rollNo}</p>
+              <p><strong>Email:</strong> ${student.email}</p>
+              <p><strong>Department:</strong> ${
+                student.department || 'Not specified'
+              }</p>
+            </div>
+          </div>
+          
+          <div class="card">
+            <div class="card-header primary">
+              <h4>Course Information</h4>
+            </div>
+            <div class="card-body">
+              <p><strong>Course Name:</strong> ${course.name}</p>
+              <p><strong>Course Code:</strong> ${course.courseCode}</p>
+              <p><strong>Credit Hours:</strong> ${course.creditHours}</p>
+              <p><strong>Department:</strong> ${course.department}</p>
+              <p><strong>Semester:</strong> ${course.semester}</p>
+            </div>
+          </div>
+          
+          <div class="card">
+            <div class="card-header primary">
+              <h4>Enrollment Information</h4>
+            </div>
+            <div class="card-body">
+              <p><strong>Enrollment Date:</strong> ${new Date(
+                enrollment.enrolledDate
+              ).toLocaleDateString()}</p>
+              <p><strong>Status:</strong> 
+                <span class="badge ${getStatusBadgeClass(enrollment.status)}">
+                  ${enrollment.status}
+                </span>
+              </p>
+              <p><strong>Grade:</strong> ${enrollment.grade || 'Not graded'}</p>
+              <p><strong>Notes:</strong> ${
+                enrollment.notes || 'No notes available'
+              }</p>
+            </div>
+          </div>
+          
+          ${
+            enrollment.status !== 'cancelled'
+              ? `
+            <div class="status-actions">
+              <h5>Update Status</h5>
+              <div class="action-buttons">
+                <button class="btn success" onclick="updateEnrollmentStatus('${enrollmentId}', 'active')">
+                  Mark as Active
+                </button>
+                <button class="btn warning" onclick="updateEnrollmentStatus('${enrollmentId}', 'pending')">
+                  Mark as Pending
+                </button>
+                <button class="btn danger" onclick="updateEnrollmentStatus('${enrollmentId}', 'cancelled')">
+                  Cancel Enrollment
+                </button>
+              </div>
+            </div>
+          `
+              : ''
+          }
+        </div>
+        <div class="modal-footer">
+          <button class="btn secondary" onclick="hideModal('enrollmentModal')">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
 
-  // Populate enrollment details
-  const detailsContainer = document.getElementById('enrollment-details');
-  if (detailsContainer) {
-    detailsContainer.innerHTML = `
-      <div class="card mb-3">
-        <div class="card-header bg-primary text-white">
-          <h5 class="mb-0">Student Information</h5>
-        </div>
-        <div class="card-body">
-          <p><strong>Name:</strong> ${student.name}</p>
-          <p><strong>Student ID:</strong> ${student.studentId}</p>
-          <p><strong>Email:</strong> ${student.email}</p>
-          <p><strong>Program:</strong> ${student.program || 'Not specified'}</p>
-        </div>
-      </div>
-      
-      <div class="card mb-3">
-        <div class="card-header bg-primary text-white">
-          <h5 class="mb-0">Course Information</h5>
-        </div>
-        <div class="card-body">
-          <p><strong>Course Name:</strong> ${course.name}</p>
-          <p><strong>Course Code:</strong> ${course.courseCode}</p>
-          <p><strong>Credit Hours:</strong> ${course.creditHours}</p>
-          <p><strong>Department:</strong> ${course.department}</p>
-          <p><strong>Semester:</strong> ${course.semester}</p>
-        </div>
-      </div>
-      
-      <div class="card">
-        <div class="card-header bg-primary text-white">
-          <h5 class="mb-0">Enrollment Information</h5>
-        </div>
-        <div class="card-body">
-          <p><strong>Enrollment Date:</strong> ${new Date(
-            enrollment.enrolledDate
-          ).toLocaleDateString()}</p>
-          <p><strong>Status:</strong> 
-            <span class="badge bg-${
-              enrollment.status === 'active'
-                ? 'success'
-                : enrollment.status === 'pending'
-                ? 'warning'
-                : 'secondary'
-            }">
-              ${enrollment.status}
-            </span>
-          </p>
-          <p><strong>Grade:</strong> ${enrollment.grade || 'Not graded'}</p>
-          <p><strong>Notes:</strong> ${
-            enrollment.notes || 'No notes available'
-          }</p>
-        </div>
-      </div>
-    `;
-
-    // Add status update options if the enrollment is not cancelled
-    if (enrollment.status !== 'cancelled') {
-      const statusUpdateContainer = document.createElement('div');
-      statusUpdateContainer.className = 'mt-4';
-      statusUpdateContainer.innerHTML = `
-        <h5>Update Status</h5>
-        <div class="d-flex gap-2 mt-2">
-          <button class="btn btn-success" onclick="updateEnrollmentStatus('${enrollmentId}', 'active')">
-            Mark as Active
-          </button>
-          <button class="btn btn-warning" onclick="updateEnrollmentStatus('${enrollmentId}', 'pending')">
-            Mark as Pending
-          </button>
-          <button class="btn btn-danger" onclick="updateEnrollmentStatus('${enrollmentId}', 'cancelled')">
-            Cancel Enrollment
-          </button>
-        </div>
-      `;
-      detailsContainer.appendChild(statusUpdateContainer);
-    }
+  // Add modal to body if it doesn't exist
+  if (!document.getElementById('enrollmentModal')) {
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalContent;
+    document.body.appendChild(modalContainer.firstElementChild);
+  } else {
+    document.getElementById('enrollmentModal').innerHTML = modalContent;
   }
 
   // Show the modal
-  const enrollmentModal = new bootstrap.Modal(
-    document.getElementById('enrollmentModal')
-  );
-  enrollmentModal.show();
+  showModal('enrollmentModal');
+}
+
+// Function to show a modal
+function showModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.add('show');
+    modal.style.display = 'block';
+    document.body.classList.add('modal-open');
+  }
+}
+
+// Function to hide a modal
+function hideModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.remove('show');
+    modal.style.display = 'none';
+    document.body.classList.remove('modal-open');
+  }
 }
 
 // Function to update enrollment status
@@ -371,20 +564,17 @@ async function updateEnrollmentStatus(enrollmentId, status) {
       throw new Error(`Failed to update enrollment status: ${response.status}`);
     }
 
-    // Close the modal
-    const enrollmentModal = bootstrap.Modal.getInstance(
-      document.getElementById('enrollmentModal')
-    );
-    enrollmentModal.hide();
+    // Hide the modal
+    hideModal('enrollmentModal');
 
     // Reload enrollments
     await loadEnrollments();
 
     // Show success message
-    alert(`Enrollment status updated to ${status}`);
+    showAlert(`Enrollment status updated to ${status}`, 'success');
   } catch (error) {
     console.error('Error updating enrollment status:', error);
-    alert(`Failed to update enrollment status: ${error.message}`);
+    showAlert(`Failed to update enrollment status: ${error.message}`, 'danger');
   }
 }
 
@@ -401,72 +591,80 @@ function confirmCancelEnrollment(enrollmentId) {
 
 // Function to add a new enrollment
 async function addNewEnrollment() {
-  // Create a select for students
-  const studentSelect = document.createElement('select');
-  studentSelect.className = 'form-select mb-3';
-  studentSelect.id = 'student-select';
-
-  let studentOptions = '<option value="">Select a student</option>';
-  students.forEach((student) => {
-    studentOptions += `<option value="${student._id}">${student.name} (${student.studentId})</option>`;
-  });
-  studentSelect.innerHTML = studentOptions;
-
-  // Create a select for courses
-  const courseSelect = document.createElement('select');
-  courseSelect.className = 'form-select mb-3';
-  courseSelect.id = 'course-select';
-
-  let courseOptions = '<option value="">Select a course</option>';
-  window.courses.forEach((course) => {
-    courseOptions += `<option value="${course._id}">${course.name} (${course.courseCode})</option>`;
-  });
-  courseSelect.innerHTML = courseOptions;
-
-  // Create the form
-  const form = document.createElement('form');
-  form.id = 'enrollment-form';
-  form.innerHTML = `
-    <div class="mb-3">
-      <label for="student-select" class="form-label">Student</label>
-      ${studentSelect.outerHTML}
-    </div>
-    
-    <div class="mb-3">
-      <label for="course-select" class="form-label">Course</label>
-      ${courseSelect.outerHTML}
-    </div>
-    
-    <div class="mb-3">
-      <label for="enrollment-notes" class="form-label">Notes (Optional)</label>
-      <textarea class="form-control" id="enrollment-notes" rows="3"></textarea>
+  const modalContent = `
+    <div class="modal" id="newEnrollmentModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Add New Enrollment</h3>
+          <button class="close-btn" onclick="hideModal('newEnrollmentModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="enrollment-form">
+            <div class="form-group">
+              <label for="student-select">Student</label>
+              <select id="student-select" required>
+                <option value="">Select a student</option>
+                ${students
+                  .map(
+                    (student) =>
+                      `<option value="${student._id}">${student.name} (${student.rollNo})</option>`
+                  )
+                  .join('')}
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="course-select">Course</label>
+              <select id="course-select" required>
+                <option value="">Select a course</option>
+                ${window.courses
+                  .map(
+                    (course) =>
+                      `<option value="${course._id}">${course.name} (${course.courseCode})</option>`
+                  )
+                  .join('')}
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="enrollment-notes">Notes (Optional)</label>
+              <textarea id="enrollment-notes" rows="3"></textarea>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn secondary" onclick="hideModal('newEnrollmentModal')">Cancel</button>
+          <button class="btn primary" onclick="submitEnrollment()">Enroll</button>
+        </div>
+      </div>
     </div>
   `;
 
-  // Show the form in a modal
-  Swal.fire({
-    title: 'Add New Enrollment',
-    html: form,
-    showCancelButton: true,
-    confirmButtonText: 'Enroll',
-    focusConfirm: false,
-    preConfirm: () => {
-      const studentId = document.getElementById('student-select').value;
-      const courseId = document.getElementById('course-select').value;
-      const notes = document.getElementById('enrollment-notes').value;
+  // Add modal to body if it doesn't exist
+  if (!document.getElementById('newEnrollmentModal')) {
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalContent;
+    document.body.appendChild(modalContainer.firstElementChild);
+  } else {
+    document.getElementById('newEnrollmentModal').innerHTML = modalContent;
+  }
 
-      if (!studentId || !courseId) {
-        Swal.showValidationMessage('Please select both a student and a course');
-        return false;
-      }
+  // Show the modal
+  showModal('newEnrollmentModal');
+}
 
-      return { studentId, courseId, notes };
-    },
-  }).then((result) => {
-    if (result.isConfirmed) {
-      createEnrollment(result.value);
-    }
-  });
+// Function to submit enrollment
+function submitEnrollment() {
+  const studentId = document.getElementById('student-select').value;
+  const courseId = document.getElementById('course-select').value;
+  const notes = document.getElementById('enrollment-notes').value;
+
+  if (!studentId || !courseId) {
+    showAlert('Please select both a student and a course', 'danger');
+    return;
+  }
+
+  createEnrollment({ studentId, courseId, notes });
 }
 
 // Function to create a new enrollment
@@ -484,7 +682,6 @@ async function createEnrollment(enrollmentData) {
         studentId: enrollmentData.studentId,
         courseId: enrollmentData.courseId,
         notes: enrollmentData.notes,
-        status: 'pending',
         enrolledDate: new Date().toISOString(),
       }),
     });
@@ -493,51 +690,151 @@ async function createEnrollment(enrollmentData) {
       throw new Error(`Failed to create enrollment: ${response.status}`);
     }
 
+    // Hide modal
+    hideModal('newEnrollmentModal');
+
     // Reload enrollments
     await loadEnrollments();
 
     // Show success message
-    Swal.fire('Success!', 'Enrollment created successfully', 'success');
+    showAlert('Enrollment created successfully', 'success');
   } catch (error) {
     console.error('Error creating enrollment:', error);
-    Swal.fire(
-      'Error!',
-      `Failed to create enrollment: ${error.message}`,
-      'error'
-    );
+    showAlert(`Failed to create enrollment: ${error.message}`, 'danger');
   }
+}
+
+// Function to show alerts
+function showAlert(message, type) {
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `alert ${type}`;
+  alertDiv.innerHTML = `
+    ${message}
+    <button type="button" class="close-btn" onclick="this.parentElement.remove()">×</button>
+  `;
+
+  document.body.appendChild(alertDiv);
+  alertDiv.style.position = 'fixed';
+  alertDiv.style.top = '20px';
+  alertDiv.style.right = '20px';
+  alertDiv.style.zIndex = '1000';
+
+  setTimeout(() => {
+    alertDiv.remove();
+  }, 5000);
 }
 
 document.addEventListener('DOMContentLoaded', async function () {
   console.log('DOM loaded, initializing enrollments functionality');
 
   // Check if we're on a page with enrollment functionality
-  const enrollmentsTab = document.getElementById('enrollments');
-  const enrollmentsTableBody = document.getElementById(
-    'enrollments-table-body'
-  );
-  const recentEnrollmentsElement =
-    document.getElementById('recent-enrollments');
+  let enrollmentsTab = document.getElementById('enrollments');
+  let enrollmentsTableBody = document.getElementById('enrollments-table-body');
+  let recentEnrollmentsElement = document.getElementById('recent-enrollments');
+
+  // Extended check for table body in case it exists with a different ID
+  if (!enrollmentsTableBody) {
+    const enrollmentsTable = document.querySelector('table.data-table');
+    if (enrollmentsTable) {
+      enrollmentsTableBody = enrollmentsTable.querySelector('tbody');
+      if (enrollmentsTableBody && !enrollmentsTableBody.id) {
+        enrollmentsTableBody.id = 'enrollments-table-body';
+      }
+    }
+  }
+
+  console.log('Found elements:', {
+    enrollmentsTab,
+    enrollmentsTableBody,
+    recentEnrollmentsElement,
+  });
 
   if (enrollmentsTab || enrollmentsTableBody || recentEnrollmentsElement) {
     console.log('Enrollment elements found, loading data');
 
-    // Make sure courses are loaded first
-    if (!window.courses || window.courses.length === 0) {
-      console.log('Courses not loaded yet, loading courses first');
-      try {
+    try {
+      // Load students first to ensure they are available
+      await loadStudents();
+      console.log('Students loaded, count:', students.length);
+
+      // Make sure courses are loaded next
+      if (!window.courses || window.courses.length === 0) {
+        console.log('Courses not loaded yet, loading courses now');
         window.courses = await loadCourses();
-      } catch (error) {
-        console.error('Failed to load courses:', error);
+        console.log('Courses loaded, count:', window.courses.length);
       }
+
+      // Now load enrollments
+      await loadEnrollments();
+      console.log(
+        'Enrollments loaded successfully, count:',
+        enrollments.length
+      );
+
+      // Re-check if table body exists after loading data
+      if (!document.getElementById('enrollments-table-body')) {
+        console.log(
+          'Table body still not found after loading data. Trying to find or create it.'
+        );
+        const enrollmentsTable = document.querySelector('table.data-table');
+        if (enrollmentsTable) {
+          let tbody = enrollmentsTable.querySelector('tbody');
+          if (!tbody) {
+            tbody = document.createElement('tbody');
+            tbody.id = 'enrollments-table-body';
+            enrollmentsTable.appendChild(tbody);
+            console.log(
+              'Created new tbody element with ID "enrollments-table-body"'
+            );
+          } else if (!tbody.id) {
+            tbody.id = 'enrollments-table-body';
+            console.log('Set ID of existing tbody to "enrollments-table-body"');
+          }
+
+          // Force re-render after creating/updating the table body
+          updateEnrollmentsTable();
+        }
+      }
+
+      // Direct DOM access for enrollments - add this to debug directly
+      console.log('---FINAL TABLE CHECK---');
+      const finalTable = document.querySelector('#enrollments-table-body');
+      console.log('Final table element:', finalTable);
+      if (finalTable) {
+        console.log('Table content HTML:', finalTable.innerHTML);
+        console.log('Table contains', finalTable.children.length, 'children');
+      }
+
+      // Try to force a re-render with a small delay
+      setTimeout(() => {
+        console.log('Forcing re-render after delay');
+        forceRenderEnrollments();
+      }, 1000);
+    } catch (error) {
+      console.error('Error during data loading:', error);
+      showAlert('Error loading data: ' + error.message, 'danger');
     }
 
-    // Load enrollments
-    try {
-      await loadEnrollments();
-      console.log('Enrollments loaded successfully');
-    } catch (error) {
-      console.error('Error loading enrollments:', error);
+    // Add manual refresh button for debugging (temporary)
+    const headerElement =
+      document.querySelector('.section-header') ||
+      document.querySelector('.card-header');
+    if (headerElement) {
+      const refreshBtn = document.createElement('button');
+      refreshBtn.className = 'btn primary small';
+      refreshBtn.innerHTML = 'Refresh Data';
+      refreshBtn.style.marginLeft = '10px';
+      refreshBtn.onclick = async () => {
+        try {
+          await loadStudents();
+          await loadCourses();
+          await loadEnrollments();
+          showAlert('Data refreshed successfully', 'success');
+        } catch (e) {
+          showAlert('Error refreshing data: ' + e.message, 'danger');
+        }
+      };
+      headerElement.appendChild(refreshBtn);
     }
 
     // Add event listeners for tab switching if we have tabs
@@ -585,9 +882,31 @@ if (typeof loadCourses !== 'function') {
         throw new Error(`Failed to load courses: ${response.status}`);
       }
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error('Failed to parse courses data:', responseText, e);
+        return [];
+      }
+
       console.log('Courses loaded:', data);
-      window.courses = Array.isArray(data) ? data : [];
+
+      if (Array.isArray(data)) {
+        window.courses = data;
+      } else if (
+        data &&
+        data.status === 'success' &&
+        Array.isArray(data.data)
+      ) {
+        window.courses = data.data;
+      } else {
+        console.warn('Unexpected courses data format:', data);
+        window.courses = [];
+      }
+
       return window.courses;
     } catch (error) {
       console.error('Error loading courses:', error);
