@@ -8,10 +8,9 @@ const AuthRouter = require('./src/routers/auth');
 const EnrollermentRouter = require('./src/routers/enrollment');
 connectDB();
 
-// Update your CORS configuration to be more permissive for development
 app.use(
   CORS({
-    origin: '*', // Allow all origins in development
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
