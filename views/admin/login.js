@@ -1,5 +1,11 @@
 const API_BASE_URL = 'http://localhost:5000';
 
+// Function to validate email format
+function isValidEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
 document
   .getElementById('loginForm')
   .addEventListener('submit', async function (event) {
@@ -7,6 +13,12 @@ document
 
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
+
+    // Validate email format
+    if (!isValidEmail(username)) {
+      showError('Please enter a valid email address');
+      return;
+    }
 
     // Disable the submit button during login attempt
     const submitButton = this.querySelector('button[type="submit"]');

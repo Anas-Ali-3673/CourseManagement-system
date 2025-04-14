@@ -49,7 +49,9 @@ const studentSchema = new mongoose.Schema({
 
 const validatedStudent = Joi.object({
   name: Joi.string().min(5).max(255).required(),
-  email: Joi.string().min(5).max(255).required(),
+  email: Joi.string().email().min(5).max(255).required().messages({
+    'string.email': 'Email format is invalid',
+  }),
   rollNo: Joi.string().min(5).max(255).required(),
   department: Joi.string().min(5).max(255).required(),
   semester: Joi.string().min(5).max(255).required(),
